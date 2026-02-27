@@ -14,4 +14,10 @@ class DiawanEventDetail extends Model {
         'event_detail_amount',
         'event_detail_price',
     ];
+    
+    protected $hidden = [
+        'created_at',
+        'updated_at',
+        'deleted_at',
+    ];
 }

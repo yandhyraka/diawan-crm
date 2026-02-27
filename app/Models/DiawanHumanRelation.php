@@ -12,4 +12,10 @@ class DiawanHumanRelation extends Model {
         'human_relation_relation_type',
         'human_relation_data',
     ];
+    
+    protected $hidden = [
+        'created_at',
+        'updated_at',
+        'deleted_at',
+    ];
 }

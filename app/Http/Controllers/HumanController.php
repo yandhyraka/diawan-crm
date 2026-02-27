@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\DiawanEvent;
 use App\Models\DiawanHuman;
 use App\Models\DiawanHumanLog;
 use App\Models\DiawanHumanRelation;
@@ -89,6 +90,66 @@ class HumanController extends Controller {
                 DB::rollBack();
 
                 $return['message'][0] = 'Update human failed, ' . $return['message'][0];
+            }
+
+            addInfoLog(__CLASS__, __FUNCTION__, -1, $return);
+        } catch (Exception $exception) {
+            $return = returnErrorException(__CLASS__, __FUNCTION__, $exception);
+        }
+
+        http_response_code($return['code']);
+        return $return;
+    }
+
+    public static function humanGet($humanUuid) {
+        $return = initializeReturn();
+
+        try {
+            $request['humanUuid'] = $humanUuid;
+            $return = customValidator($request, [
+                'humanUuid' => 'required|string|exists:diawan_humans,human_uuid',
+            ]);
+
+            DB::beginTransaction();
+
+            $humanUuid = null;
+            $existingHuman = null;
+
+            if ($return['status']) {
+                $existingHuman = DiawanHuman::where('human_uuid', $request['humanUuid'])
+                    ->get()->toArray();
+                if (isset($existingHuman) && !empty($existingHuman)) {
+                    $return['message'][0] = 'Get human success';
+                } else {
+                    $return['status'] =  false;
+                    $return['message'][0] = 'Get human failed, human not found';
+                }
+            }
+
+            if ($return['status']) {
+                $existingHumanRelation = DiawanHumanRelation::where('human_relation_human_uuid1', $request['humanUuid'])
+                    ->orWhere('human_relation_human_uuid2', $request['humanUuid'])
+                    ->get()->toArray();
+                if (isset($existingHumanRelation) && !empty($existingHumanRelation)) {
+                    foreach ($existingHumanRelation as $i => $relation) {
+                        $existingHumanRelation[$i]['human_relation_data'] = json_decode($relation['human_relation_data'], true);
+                    }
+                    $existingHuman[0]['relations'] = $existingHumanRelation;
+                    $return['message'][0] = 'Get human relation success';
+                }
+            }
+
+            if ($return['status']) {
+                $existingEvent = DiawanEvent::where('event_human_uuid', $request['humanUuid'])
+                    ->get()->toArray();
+                if (isset($existingEvent) && !empty($existingEvent)) {
+                    $existingHuman[0]['events'] = $existingEvent;
+                    $return['message'][0] = 'Get events success';
+                }
+            }
+
+            if ($return['status']) {
+                $return['data'] =  $existingHuman;
             }
 
             addInfoLog(__CLASS__, __FUNCTION__, -1, $return);
