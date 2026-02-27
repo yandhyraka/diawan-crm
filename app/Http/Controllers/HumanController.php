@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\DiawanEvent;
+use App\Models\DiawanEventDetail;
 use App\Models\DiawanHuman;
 use App\Models\DiawanHumanLog;
 use App\Models\DiawanHumanRelation;
@@ -116,7 +117,16 @@ class HumanController extends Controller {
             $existingHuman = null;
 
             if ($return['status']) {
-                $existingHuman = DiawanHuman::where('human_uuid', $request['humanUuid'])
+                $existingHuman = DiawanHuman::selectRaw('
+                    human_uuid,
+                    human_first_name as first_name,
+                    human_last_name as last_name,
+                    human_ktp as ktp,
+                    human_birth_date as birth_date,
+                    human_phone_number as phone_number,
+                    human_email as email
+                ')
+                ->where('human_uuid', $request['humanUuid'])
                     ->get()->toArray();
                 if (isset($existingHuman) && !empty($existingHuman)) {
                     $return['message'][0] = 'Get human success';
@@ -127,24 +137,66 @@ class HumanController extends Controller {
             }
 
             if ($return['status']) {
-                $existingHumanRelation = DiawanHumanRelation::where('human_relation_human_uuid1', $request['humanUuid'])
+                $existingHumanRelation = DiawanHumanRelation::selectRaw('
+                    human_relation_human_uuid1 as human_uuid1,
+                    human1.human_first_name as human_first_name1,
+                    human1.human_last_name as human_last_name1,
+                    human_relation_human_uuid2 as human_uuid2,
+                    human2.human_first_name as human_first_name2,
+                    human2.human_last_name as human_last_name2,
+                    human_relation_relation_type, 
+                    human_relation_data
+                ')
+                    ->leftJoin('diawan_humans as human1', 'human_relation_human_uuid1', '=', 'human1.human_uuid')
+                    ->leftJoin('diawan_humans as human2', 'human_relation_human_uuid2', '=', 'human2.human_uuid')
+                    ->where('human_relation_human_uuid1', $request['humanUuid'])
                     ->orWhere('human_relation_human_uuid2', $request['humanUuid'])
                     ->get()->toArray();
                 if (isset($existingHumanRelation) && !empty($existingHumanRelation)) {
+                    $relations = [];
                     foreach ($existingHumanRelation as $i => $relation) {
-                        $existingHumanRelation[$i]['human_relation_data'] = json_decode($relation['human_relation_data'], true);
+                        $relationTemp = [];
+                        if ($request['humanUuid'] == $relation['human_uuid1']) {
+                            $relationTemp['human_uuid'] = $relation['human_uuid2'];
+                            $relationTemp['first_name'] = $relation['human_first_name2'];
+                            $relationTemp['last_name'] = $relation['human_last_name2'];
+                        } else {
+                            $relationTemp['human_uuid'] = $relation['human_uuid1'];
+                            $relationTemp['first_name'] = $relation['human_first_name1'];
+                            $relationTemp['last_name'] = $relation['human_last_name1'];
+                        }
+                        $relationTemp['relation_type'] = $relation['human_relation_relation_type'];
+                        $relationTemp['other_data'] = json_decode($relation['human_relation_data'], true);
+                        $relations[] = $relationTemp;
                     }
-                    $existingHuman[0]['relations'] = $existingHumanRelation;
+                    $existingHuman[0]['relations'] = $relations;
                     $return['message'][0] = 'Get human relation success';
                 }
             }
 
             if ($return['status']) {
-                $existingEvent = DiawanEvent::where('event_human_uuid', $request['humanUuid'])
+                $existingEvent = DiawanEvent::selectRaw('
+                    event_id,
+                    event_event_type as event_type,
+                    diawan_places.place_name as event_place_name
+                ')
+                    ->leftJoin('diawan_places', 'event_place_id', '=', 'diawan_places.place_id')
+                    ->where('event_human_uuid', $request['humanUuid'])
                     ->get()->toArray();
                 if (isset($existingEvent) && !empty($existingEvent)) {
                     $existingHuman[0]['events'] = $existingEvent;
                     $return['message'][0] = 'Get events success';
+                }
+            }
+
+            if ($return['status']) {
+                foreach ($existingHuman[0]['events'] as $i => $event) {
+                    $existingEventDetail = DiawanEventDetail::where('event_detail_event_id', $event['event_id'])
+                        ->get()->toArray();
+                    if (isset($existingEventDetail) && !empty($existingEventDetail)) {
+                        $existingHuman[0]['events'][$i]['event_detail'] = $existingEventDetail;
+                        $return['message'][0] = 'Get event details success';
+                    }
                 }
             }
 
