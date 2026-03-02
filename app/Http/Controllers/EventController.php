@@ -18,9 +18,7 @@ class EventController extends Controller {
                 'event_type' => 'required|string|exists:diawan_event_types,event_type_name',
                 'event_place_id' => 'required|integer|exists:diawan_places,place_id',
                 'event_detail' => 'required|array|min:1',
-                'event_detail.*.event_detail_item' => 'required|string',
-                'event_detail.*.event_detail_amount' => 'required|integer|min:1',
-                'event_detail.*.event_detail_price' => 'required|numeric|min:0',
+                'event_detail.*.event_detail_data' => 'required|string',
             ]);
 
             DB::beginTransaction();
@@ -41,9 +39,8 @@ class EventController extends Controller {
             if ($return['status']) {
                 foreach ($request['event_detail'] as $i => $eventDetail) {
                     $updateDetail['event_detail_event_id'] = $eventIdAdded;
-                    $updateDetail['event_detail_item'] = $eventDetail['event_detail_item'];
-                    $updateDetail['event_detail_amount'] = $eventDetail['event_detail_amount'];
-                    $updateDetail['event_detail_price'] = $eventDetail['event_detail_price'];
+                    $updateDetail['event_detail_human_uuid'] = $request['human_uuid'];
+                    $updateDetail['event_detail_data'] = $eventDetail['event_detail_data'];
 
                     $return = addData(DiawanEventDetail::class, array(), $updateDetail, 'event_detail_id', 'event_detail');
                 }

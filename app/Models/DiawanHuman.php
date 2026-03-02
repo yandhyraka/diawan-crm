@@ -16,6 +16,7 @@ class DiawanHuman extends Model {
     protected $fillable = [
         'human_first_name',
         'human_last_name',
+        'human_sex',
         'human_ktp',
         'human_birth_date',
         'human_phone_number',

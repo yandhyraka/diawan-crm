@@ -10,9 +10,8 @@ class DiawanEventDetail extends Model {
     protected $primaryKey = 'event_detail_id';   
     protected $fillable = [
         'event_detail_event_id',
-        'event_detail_item',
-        'event_detail_amount',
-        'event_detail_price',
+        'event_detail_human_uuid',
+        'event_detail_data'
     ];
     
     protected $hidden = [
