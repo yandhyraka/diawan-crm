@@ -11,6 +11,7 @@ use App\Models\DiawanHumanRelationLog;
 use Exception;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use function Laravel\Prompts\search;
 
 class HumanController extends Controller {
     public static function _humanUpdate(Request $request) {
@@ -73,7 +74,7 @@ class HumanController extends Controller {
                         $humanUuidAdded = $return['data']['id'];
                     }
                 } else {
-                    $return = updateData(DiawanHuman::class, array(), $update, $search);
+                    $return = updateData(DiawanHuman::class, array(), dataArrays: $update, $search);
                 }
             }
 
@@ -114,11 +115,12 @@ class HumanController extends Controller {
         return $return;
     }
 
-    public static function humanInsert(Request $request) {
+    public static function humanUpdate(Request $request): array {
         $return = initializeReturn();
 
         try {
             $return = customValidator($request->all(), [
+                'human_uuid' => 'nullable|string|exists:diawan_humans,human_uuid',
                 'first_name' => 'nullable|alpha',
                 'last_name' => 'nullable|alpha',
                 'sex' => 'nullable|in:MALE,FEMALE',
@@ -131,8 +133,7 @@ class HumanController extends Controller {
 
             DB::beginTransaction();
 
-            $humanUuidAdded = null;
-            $getHuman = null;
+            $humanUuid = null;
 
             if ($return['status']) {
                 $update['human_first_name'] = $request['first_name'];
@@ -144,16 +145,29 @@ class HumanController extends Controller {
                 $update['human_phone_number'] = $request['phone_number'];
                 $update['deleted_at'] = null;
 
-                $return = addData(DiawanHuman::class, array(), $update, 'human_uuid', 'human');
-                if ($return['status']) {
-                    $humanUuidAdded = $return['data']['id'];
+                if (isset($request['human_uuid']) && !empty($request['human_uuid'])) {
+                    $search['human_uuid'] = $request['human_uuid'];
+                    $return = updateData(DiawanHuman::class, array(), $update, $search);
+                } else {
+                    $return = addData(DiawanHuman::class, array(), $update, 'human_uuid', 'human');
+                    if ($return['status']) {
+                        $humanUuid = $return['data']['id'];
+                    }
                 }
             }
 
             if ($return['status']) {
-                $addLog['human_log_log_type'] = 'INSERT';
-                $addLog['human_log_before'] = null;
-                $addLog['human_log_human_uuid'] = $humanUuidAdded;
+                if (isset($request['human_uuid']) && !empty($request['human_uuid'])) {
+                    $getHuman = DiawanHuman::where('human_uuid', $request['human_uuid'])->get()->toArray();
+
+                    $addLog['human_log_log_type'] = 'UPDATE';
+                    $addLog['human_log_before'] = json_encode($getHuman[0] ?? null);
+                } else {
+                    $addLog['human_log_log_type'] = 'INSERT';
+                    $addLog['human_log_before'] = null;
+                }
+
+                $addLog['human_log_human_uuid'] = $humanUuid;
                 $addLog['human_log_after'] = json_encode($update);
                 $addLog['human_log_input_source'] = $request['source'];
 
@@ -163,12 +177,12 @@ class HumanController extends Controller {
             if ($return['status']) {
                 DB::commit();
 
-                $return['data']['id'] = $humanUuidAdded;
-                $return['message'][0] =  'Insert human success';
+                $return['data']['id'] = $humanUuid;
+                $return['message'][0] =  'Update human success';
             } else {
                 DB::rollBack();
 
-                $return['message'][0] = 'Insert human failed, ' . $return['message'][0];
+                $return['message'][0] = 'Update human failed, ' . $return['message'][0];
             }
 
             if ($return['status']) {
@@ -194,6 +208,128 @@ class HumanController extends Controller {
                     $return['message'][0] = 'Theres is already a human with the same first name/last name/ktp/phone number/email, please decide the action to be taken for the duplicate data (MERGE/USE/DELETE)';
                     $return['data'] = $getHuman;
                 }
+            }
+
+            addInfoLog(__CLASS__, __FUNCTION__, -1, $return);
+        } catch (Exception $exception) {
+            $return = returnErrorException(__CLASS__, __FUNCTION__, $exception);
+        }
+
+        http_response_code($return['code']);
+        return $return;
+    }
+
+    public static function humanConflictGet() {
+        $return = initializeReturn();
+
+        try {
+            $selectRaw = 'diawan_humans.human_uuid as human_uuid1,
+                diawan_humans.human_first_name as first_name1,
+                diawan_humans.human_last_name as last_name1,
+                diawan_humans.human_sex as sex1,
+                diawan_humans.human_ktp as ktp1,
+                diawan_humans.human_birth_date as birth_date1,
+                diawan_humans.human_phone_number as phone_number1,
+                diawan_humans.human_email as email1,
+                diawan_humans2.human_uuid as human_uuid2,
+                diawan_humans2.human_first_name as first_name2,
+                diawan_humans2.human_last_name as last_name2,
+                diawan_humans2.human_sex as sex2,
+                diawan_humans2.human_ktp as ktp2,
+                diawan_humans2.human_birth_date as birth_date2,
+                diawan_humans2.human_phone_number as phone_number2,
+                diawan_humans2.human_email as email2';
+
+            $duplicateFirstName = DiawanHuman::selectRaw($selectRaw)
+                ->join('diawan_humans as diawan_humans2', 'diawan_humans.human_first_name', '=', 'diawan_humans2.human_first_name')
+                ->whereColumn('diawan_humans.human_uuid', '>', 'diawan_humans2.human_uuid');
+            $duplicateLastName = DiawanHuman::selectRaw($selectRaw)
+                ->join('diawan_humans as diawan_humans2', 'diawan_humans.human_last_name', '=', 'diawan_humans2.human_last_name')
+                ->whereColumn('diawan_humans.human_uuid', '>', 'diawan_humans2.human_uuid')
+                ->union($duplicateFirstName);
+            $duplicateKtp = DiawanHuman::selectRaw($selectRaw)
+                ->join('diawan_humans as diawan_humans2', 'diawan_humans.human_ktp', '=', 'diawan_humans2.human_ktp')
+                ->whereColumn('diawan_humans.human_uuid', '>', 'diawan_humans2.human_uuid')
+                ->union($duplicateLastName);
+            $duplicatePhoneNumber = DiawanHuman::selectRaw($selectRaw)
+                ->join('diawan_humans as diawan_humans2', 'diawan_humans.human_phone_number', '=', 'diawan_humans2.human_phone_number')
+                ->whereColumn('diawan_humans.human_uuid', '>', 'diawan_humans2.human_uuid')
+                ->union($duplicateKtp);
+            $duplicateEmail = DiawanHuman::selectRaw($selectRaw)
+                ->join('diawan_humans as diawan_humans2', 'diawan_humans.human_email', '=', 'diawan_humans2.human_email')
+                ->whereColumn('diawan_humans.human_uuid', '>', 'diawan_humans2.human_uuid')
+                ->union($duplicatePhoneNumber)
+                ->get()->toArray();
+
+            $return['status'] = true;
+            $return['message'][0] = 'Get human conflict success';
+            $return['data'] = $duplicateEmail;
+
+            addInfoLog(__CLASS__, __FUNCTION__, -1, $return);
+        } catch (Exception $exception) {
+            $return = returnErrorException(__CLASS__, __FUNCTION__, $exception);
+        }
+
+        http_response_code($return['code']);
+        return $return;
+    }
+
+    public static function humanConflictUpdate(Request $request): array {
+        $return = initializeReturn();
+
+        try {
+            $return = customValidator($request->all(), [
+                'conflict_data' => 'required|array',
+                'resolve_data' => 'required|array',
+                'resolve_data.human_uuid' => 'required|string|exists:diawan_humans,human_uuid',
+                'resolve_data.first_name' => 'nullable|alpha',
+                'resolve_data.last_name' => 'nullable|alpha',
+                'resolve_data.sex' => 'nullable|in:MALE,FEMALE',
+                'resolve_data.ktp' => 'nullable|integer',
+                'resolve_data.birth_date' => 'nullable|date',
+                'resolve_data.email' => 'nullable|email',
+                'resolve_data.phone_number' => 'nullable|string',
+                'resolve_data.source' => 'required|string|exists:diawan_input_sources,input_source_name',
+            ]);
+
+            DB::beginTransaction();
+
+            if ($return['status']) {
+                $resolveData = $request['resolve_data'];
+                $search['human_uuid'] = $resolveData['human_uuid'];
+                
+                $update['human_first_name'] = $resolveData['first_name'];
+                $update['human_last_name'] = $resolveData['last_name'];
+                $update['human_sex'] = $resolveData['sex'];
+                $update['human_ktp'] = $resolveData['ktp'];
+                $update['human_birth_date'] = $resolveData['birth_date'];
+                $update['human_email'] = $resolveData['email'];
+                $update['human_phone_number'] = $resolveData['phone_number'];
+
+                $return = updateData(DiawanHuman::class, array(), $update, $search);
+            }
+
+            if ($return['status']) {
+                $getHuman = DiawanHuman::where('human_uuid', $request['human_uuid'])->get()->toArray();
+
+                $addLog['human_log_log_type'] = 'UPDATE';
+                $addLog['human_log_human_uuid'] = $request['human_uuid'];
+                $addLog['human_log_before'] = json_encode($getHuman[0]);
+                $addLog['human_log_after'] = json_encode($update);
+                $addLog['human_log_input_source'] = $request['source'];
+
+                $return = addData(DiawanHumanLog::class, array(), $addLog, 'human_log_id', 'human_log');
+            }
+
+            if ($return['status']) {
+                DB::commit();
+
+                $return['data']['id'] = $request['human_uuid'];
+                $return['message'][0] =  'Update human success';
+            } else {
+                DB::rollBack();
+
+                $return['message'][0] = 'Update human failed, ' . $return['message'][0];
             }
 
             addInfoLog(__CLASS__, __FUNCTION__, -1, $return);
