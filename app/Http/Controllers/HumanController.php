@@ -13,12 +13,12 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
 class HumanController extends Controller {
-    public static function humanUpdate(Request $request) {
+    public static function _humanUpdate(Request $request) {
         $return = initializeReturn();
 
         try {
             $return = customValidator($request->all(), [
-                'first_name' => 'required',
+                'first_name' => 'nullable|alpha',
                 'last_name' => 'nullable|alpha',
                 'sex' => 'nullable|in:MALE,FEMALE',
                 'ktp' => 'nullable|integer',
@@ -103,6 +103,97 @@ class HumanController extends Controller {
                 DB::rollBack();
 
                 $return['message'][0] = 'Update human failed, ' . $return['message'][0];
+            }
+
+            addInfoLog(__CLASS__, __FUNCTION__, -1, $return);
+        } catch (Exception $exception) {
+            $return = returnErrorException(__CLASS__, __FUNCTION__, $exception);
+        }
+
+        http_response_code($return['code']);
+        return $return;
+    }
+
+    public static function humanInsert(Request $request) {
+        $return = initializeReturn();
+
+        try {
+            $return = customValidator($request->all(), [
+                'first_name' => 'nullable|alpha',
+                'last_name' => 'nullable|alpha',
+                'sex' => 'nullable|in:MALE,FEMALE',
+                'ktp' => 'nullable|integer',
+                'birth_date' => 'nullable|date',
+                'email' => 'nullable|email',
+                'phone_number' => 'nullable|string',
+                'source' => 'required|string|exists:diawan_input_sources,input_source_name',
+            ]);
+
+            DB::beginTransaction();
+
+            $humanUuidAdded = null;
+            $getHuman = null;
+
+            if ($return['status']) {
+                $update['human_first_name'] = $request['first_name'];
+                $update['human_last_name'] = $request['last_name'];
+                $update['human_sex'] = $request['sex'];
+                $update['human_ktp'] = $request['ktp'];
+                $update['human_birth_date'] = $request['birth_date'];
+                $update['human_email'] = $request['email'];
+                $update['human_phone_number'] = $request['phone_number'];
+                $update['deleted_at'] = null;
+
+                $return = addData(DiawanHuman::class, array(), $update, 'human_uuid', 'human');
+                if ($return['status']) {
+                    $humanUuidAdded = $return['data']['id'];
+                }
+            }
+
+            if ($return['status']) {
+                $addLog['human_log_log_type'] = 'INSERT';
+                $addLog['human_log_before'] = null;
+                $addLog['human_log_human_uuid'] = $humanUuidAdded;
+                $addLog['human_log_after'] = json_encode($update);
+                $addLog['human_log_input_source'] = $request['source'];
+
+                $return = addData(DiawanHumanLog::class, array(), $addLog, 'human_log_id', 'human_log');
+            }
+
+            if ($return['status']) {
+                DB::commit();
+
+                $return['data']['id'] = $humanUuidAdded;
+                $return['message'][0] =  'Insert human success';
+            } else {
+                DB::rollBack();
+
+                $return['message'][0] = 'Insert human failed, ' . $return['message'][0];
+            }
+
+            if ($return['status']) {
+                $getHuman = DiawanHuman::selectRaw('
+                    human_uuid,
+                    human_first_name as first_name,
+                    human_last_name as last_name,
+                    human_sex as sex,
+                    human_ktp as ktp,
+                    human_birth_date as birth_date,
+                    human_email as email,
+                    human_phone_number as phone_number,
+                    "MERGE/USE/DELETE" as action,
+                    "" as merge_to_human_uuid
+                ')
+                    ->where('human_first_name', $request['first_name'])
+                    ->orWhere('human_last_name', $request['last_name'])
+                    ->orWhere('human_ktp', $request['ktp'])
+                    ->orWhere('human_phone_number', $request['phone_number'])
+                    ->orWhere('human_email', $request['email'])
+                    ->get()->toArray();
+                if (isset($getHuman) && !empty($getHuman) && sizeof($getHuman) > 1) {
+                    $return['message'][0] = 'Theres is already a human with the same first name/last name/ktp/phone number/email, please decide the action to be taken for the duplicate data (MERGE/USE/DELETE)';
+                    $return['data'] = $getHuman;
+                }
             }
 
             addInfoLog(__CLASS__, __FUNCTION__, -1, $return);
