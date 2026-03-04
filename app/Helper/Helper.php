@@ -396,15 +396,16 @@ if (!function_exists('updateData')) {
                 $return['code'] = 200;
             }
             if ($canUpdate) {
+                $dataArrays1 = $dataArrays;
                 $modelResponse = new $model();
                 foreach ($whereArrays as $i => $whereArray) {
-                    foreach ($dataArrays as $j => $dataArray) {
+                    foreach ($dataArrays1 as $j => $dataArray) {
                         if (is_array($whereArray) && $whereArray[0] == $j) {
                             $modelResponse = $modelResponse->where($whereArray[0], $whereArray[1], $dataArray);
-                            unset($dataArrays[$j]);
+                            unset($dataArrays1[$j]);
                         } else if ($whereArray == $j) {
                             $modelResponse = $modelResponse->where($whereArray, $dataArray);
-                            unset($dataArrays[$j]);
+                            unset($dataArrays1[$j]);
                         }
 
                         if ($whereArray == $id) {

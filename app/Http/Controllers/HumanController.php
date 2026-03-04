@@ -74,7 +74,7 @@ class HumanController extends Controller {
                         $humanUuidAdded = $return['data']['id'];
                     }
                 } else {
-                    $return = updateData(DiawanHuman::class, array(), dataArrays: $update, $search);
+                    $return = updateData(DiawanHuman::class, array(), $update, $search);
                 }
             }
 
@@ -185,27 +185,35 @@ class HumanController extends Controller {
                 $return['message'][0] = 'Update human failed, ' . $return['message'][0];
             }
 
+            // if ($return['status']) {
+            //     $getHuman = DiawanHuman::selectRaw('
+            //         human_uuid,
+            //         human_first_name as first_name,
+            //         human_last_name as last_name,
+            //         human_sex as sex,
+            //         human_ktp as ktp,
+            //         human_birth_date as birth_date,
+            //         human_email as email,
+            //         human_phone_number as phone_number,
+            //         "MERGE/USE/DELETE" as action,
+            //         "" as merge_to_human_uuid
+            //     ')
+            //         ->where('human_first_name', $request['first_name'])
+            //         ->orWhere('human_last_name', $request['last_name'])
+            //         ->orWhere('human_ktp', $request['ktp'])
+            //         ->orWhere('human_phone_number', $request['phone_number'])
+            //         ->orWhere('human_email', $request['email'])
+            //         ->get()->toArray();
+            //     if (isset($getHuman) && !empty($getHuman) && sizeof($getHuman) > 1) {
+            //         $return['message'][0] = 'Theres is already a human with the same first name/last name/ktp/phone number/email, please decide the action to be taken for the duplicate data (MERGE/USE/DELETE)';
+            //         $return['data'] = $getHuman;
+            //     }
+            // }
+
             if ($return['status']) {
-                $getHuman = DiawanHuman::selectRaw('
-                    human_uuid,
-                    human_first_name as first_name,
-                    human_last_name as last_name,
-                    human_sex as sex,
-                    human_ktp as ktp,
-                    human_birth_date as birth_date,
-                    human_email as email,
-                    human_phone_number as phone_number,
-                    "MERGE/USE/DELETE" as action,
-                    "" as merge_to_human_uuid
-                ')
-                    ->where('human_first_name', $request['first_name'])
-                    ->orWhere('human_last_name', $request['last_name'])
-                    ->orWhere('human_ktp', $request['ktp'])
-                    ->orWhere('human_phone_number', $request['phone_number'])
-                    ->orWhere('human_email', $request['email'])
-                    ->get()->toArray();
-                if (isset($getHuman) && !empty($getHuman) && sizeof($getHuman) > 1) {
-                    $return['message'][0] = 'Theres is already a human with the same first name/last name/ktp/phone number/email, please decide the action to be taken for the duplicate data (MERGE/USE/DELETE)';
+                $getHuman = self::humanConflictGet($humanUuid)['data'] ?? null;
+                if (isset($getHuman) && !empty($getHuman)) {
+                    $return['message'][0] = 'Theres is already a human with the same first name/last name/ktp/phone number/email, please decide the action to be taken for the duplicate data';
                     $return['data'] = $getHuman;
                 }
             }
@@ -219,7 +227,7 @@ class HumanController extends Controller {
         return $return;
     }
 
-    public static function humanConflictGet() {
+    public static function humanConflictGet($humanUuid = null): array {
         $return = initializeReturn();
 
         try {
@@ -243,23 +251,53 @@ class HumanController extends Controller {
             $duplicateFirstName = DiawanHuman::selectRaw($selectRaw)
                 ->join('diawan_humans as diawan_humans2', 'diawan_humans.human_first_name', '=', 'diawan_humans2.human_first_name')
                 ->whereColumn('diawan_humans.human_uuid', '>', 'diawan_humans2.human_uuid');
+            if (isset($humanUuid) && !empty($humanUuid)) {
+                $duplicateFirstName = $duplicateFirstName->where(function ($query) use ($humanUuid) {
+                    $query->where('diawan_humans.human_uuid', $humanUuid)
+                        ->orWhere('diawan_humans2.human_uuid', $humanUuid);
+                });
+            }
             $duplicateLastName = DiawanHuman::selectRaw($selectRaw)
                 ->join('diawan_humans as diawan_humans2', 'diawan_humans.human_last_name', '=', 'diawan_humans2.human_last_name')
                 ->whereColumn('diawan_humans.human_uuid', '>', 'diawan_humans2.human_uuid')
                 ->union($duplicateFirstName);
+            if (isset($humanUuid) && !empty($humanUuid)) {
+                $duplicateLastName = $duplicateLastName->where(function ($query) use ($humanUuid) {
+                    $query->where('diawan_humans.human_uuid', $humanUuid)
+                        ->orWhere('diawan_humans2.human_uuid', $humanUuid);
+                });
+            }
             $duplicateKtp = DiawanHuman::selectRaw($selectRaw)
                 ->join('diawan_humans as diawan_humans2', 'diawan_humans.human_ktp', '=', 'diawan_humans2.human_ktp')
                 ->whereColumn('diawan_humans.human_uuid', '>', 'diawan_humans2.human_uuid')
                 ->union($duplicateLastName);
+            if (isset($humanUuid) && !empty($humanUuid)) {
+                $duplicateKtp = $duplicateKtp->where(function ($query) use ($humanUuid) {
+                    $query->where('diawan_humans.human_uuid', $humanUuid)
+                        ->orWhere('diawan_humans2.human_uuid', $humanUuid);
+                });
+            }
             $duplicatePhoneNumber = DiawanHuman::selectRaw($selectRaw)
                 ->join('diawan_humans as diawan_humans2', 'diawan_humans.human_phone_number', '=', 'diawan_humans2.human_phone_number')
                 ->whereColumn('diawan_humans.human_uuid', '>', 'diawan_humans2.human_uuid')
                 ->union($duplicateKtp);
+            if (isset($humanUuid) && !empty($humanUuid)) {
+                $duplicatePhoneNumber = $duplicatePhoneNumber->where(function ($query) use ($humanUuid) {
+                    $query->where('diawan_humans.human_uuid', $humanUuid)
+                        ->orWhere('diawan_humans2.human_uuid', $humanUuid);
+                });
+            }
             $duplicateEmail = DiawanHuman::selectRaw($selectRaw)
                 ->join('diawan_humans as diawan_humans2', 'diawan_humans.human_email', '=', 'diawan_humans2.human_email')
                 ->whereColumn('diawan_humans.human_uuid', '>', 'diawan_humans2.human_uuid')
-                ->union($duplicatePhoneNumber)
-                ->get()->toArray();
+                ->union($duplicatePhoneNumber);
+            if (isset($humanUuid) && !empty($humanUuid)) {
+                $duplicateEmail = $duplicateEmail->where(function ($query) use ($humanUuid) {
+                    $query->where('diawan_humans.human_uuid', $humanUuid)
+                        ->orWhere('diawan_humans2.human_uuid', $humanUuid);
+                });
+            }
+            $duplicateEmail = $duplicateEmail->get()->toArray();
 
             $return['status'] = true;
             $return['message'][0] = 'Get human conflict success';
@@ -289,15 +327,16 @@ class HumanController extends Controller {
                 'resolve_data.birth_date' => 'nullable|date',
                 'resolve_data.email' => 'nullable|email',
                 'resolve_data.phone_number' => 'nullable|string',
-                'resolve_data.source' => 'required|string|exists:diawan_input_sources,input_source_name',
             ]);
 
             DB::beginTransaction();
 
+            $resolveData = $request['resolve_data'];
+            $conflictData = $request['conflict_data'];
+
             if ($return['status']) {
-                $resolveData = $request['resolve_data'];
                 $search['human_uuid'] = $resolveData['human_uuid'];
-                
+
                 $update['human_first_name'] = $resolveData['first_name'];
                 $update['human_last_name'] = $resolveData['last_name'];
                 $update['human_sex'] = $resolveData['sex'];
@@ -306,17 +345,45 @@ class HumanController extends Controller {
                 $update['human_email'] = $resolveData['email'];
                 $update['human_phone_number'] = $resolveData['phone_number'];
 
-                $return = updateData(DiawanHuman::class, array(), $update, $search);
+                $return =  addOrUpdateData(DiawanHuman::class, $search, $update, false, 'human_uuid', 'human');
+            }
+
+            if ($return['status']) {
+                $getHuman = DiawanHuman::where('human_uuid', $resolveData['human_uuid'])->get()->toArray();
+
+                $addLog['human_log_log_type'] = 'UPDATE';
+                $addLog['human_log_human_uuid'] = $resolveData['human_uuid'];
+                $addLog['human_log_before'] = json_encode($getHuman[0]);
+                $addLog['human_log_after'] = json_encode($update);
+                $addLog['human_log_input_source'] = 'CONFLICT_RESOLUTION';
+
+                $return = addData(DiawanHumanLog::class, array(), $addLog, 'human_log_id', 'human_log');
+            }
+
+            $humanUuidDeleted = null;
+            if ($return['status']) {
+                $useData = '1';
+                if ($conflictData['human_uuid1'] == $resolveData['human_uuid']) {
+                    $useData = '2';
+                }
+                $humanUuidDeleted = $conflictData['human_uuid' . $useData];
+                $deleteHuman = DiawanHuman::where('human_uuid', $humanUuidDeleted)->delete();
+                if (isset($deleteHuman) && !empty($deleteHuman)) {
+                    $return['message'][0] = 'Delete human success';
+                } else {
+                    $return['status'] = false;
+                    $return['message'][0] = 'Delete human failed';
+                }
             }
 
             if ($return['status']) {
                 $getHuman = DiawanHuman::where('human_uuid', $request['human_uuid'])->get()->toArray();
 
-                $addLog['human_log_log_type'] = 'UPDATE';
-                $addLog['human_log_human_uuid'] = $request['human_uuid'];
-                $addLog['human_log_before'] = json_encode($getHuman[0]);
-                $addLog['human_log_after'] = json_encode($update);
-                $addLog['human_log_input_source'] = $request['source'];
+                $addLog['human_log_log_type'] = 'DELETE';
+                $addLog['human_log_human_uuid'] = $humanUuidDeleted;
+                $addLog['human_log_before'] = json_encode(['deleted_at' => null]);
+                $addLog['human_log_after'] = json_encode(['deleted_at' => now()]);
+                $addLog['human_log_input_source'] = 'CONFLICT_RESOLUTION';
 
                 $return = addData(DiawanHumanLog::class, array(), $addLog, 'human_log_id', 'human_log');
             }
@@ -324,7 +391,7 @@ class HumanController extends Controller {
             if ($return['status']) {
                 DB::commit();
 
-                $return['data']['id'] = $request['human_uuid'];
+                $return['data']['id'] = $resolveData['human_uuid'];
                 $return['message'][0] =  'Update human success';
             } else {
                 DB::rollBack();

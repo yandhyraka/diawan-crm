@@ -14,6 +14,7 @@ class DiawanHuman extends Model {
     protected $keyType = 'string';
 
     protected $fillable = [
+        'human_uuid',
         'human_first_name',
         'human_last_name',
         'human_sex',
